@@ -1,0 +1,298 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Artisan user profile including craft details and verification state",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "User ID matching Firebase Auth UID"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Artisan's full name",
+          "maxLength": 100
+        },
+        "mobile": {
+          "type": "string",
+          "description": "Artisan contact phone number",
+          "maxLength": 20
+        },
+        "email": {
+          "type": "string",
+          "description": "Artisan email or synthetic mobile account email",
+          "maxLength": 150
+        },
+        "preferredLanguage": {
+          "type": "string",
+          "description": "Preferred language code (e.g. en, hi, mr)",
+          "maxLength": 10
+        },
+        "artisanName": {
+          "type": "string",
+          "description": "Brand or studio name",
+          "maxLength": 100
+        },
+        "craftCategory": {
+          "type": "string",
+          "description": "Primary craft category (e.g. Pottery, Weaving)",
+          "maxLength": 80
+        },
+        "experienceYears": {
+          "type": "number",
+          "description": "Years of experience practicing craft"
+        },
+        "village": {
+          "type": "string",
+          "description": "Village or locality",
+          "maxLength": 100
+        },
+        "district": {
+          "type": "string",
+          "description": "District",
+          "maxLength": 100
+        },
+        "state": {
+          "type": "string",
+          "description": "State",
+          "maxLength": 100
+        },
+        "profileComplete": {
+          "type": "boolean",
+          "description": "Whether onboarding profile is completed"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "description": "Identity verification status",
+          "enum": ["pending", "verified", "failed", "skipped"]
+        },
+        "verificationMethod": {
+          "type": "string",
+          "description": "Verification method used",
+          "maxLength": 50
+        },
+        "verifiedAt": {
+          "type": "string",
+          "description": "Timestamp of verification"
+        },
+        "providerReferenceId": {
+          "type": "string",
+          "description": "Provider verification reference id",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Document creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Document last updated timestamp"
+        }
+      },
+      "required": ["id", "fullName", "preferredLanguage"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Artisan crafted catalog product item",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product identifier"
+        },
+        "artisanId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the creator artisan"
+        },
+        "name": {
+          "type": "string",
+          "description": "Title of the handcrafted product",
+          "maxLength": 150
+        },
+        "price": {
+          "type": "number",
+          "description": "Selling price in INR"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Average buyer rating"
+        },
+        "stock": {
+          "type": "number",
+          "description": "Available units in inventory"
+        },
+        "status": {
+          "type": "string",
+          "description": "Catalog publication status",
+          "enum": ["Published", "Draft", "Out of Stock"]
+        },
+        "image": {
+          "type": "string",
+          "description": "Image URL or data URI",
+          "maxLength": 50000
+        },
+        "craft": {
+          "type": "string",
+          "description": "Craft category of the item",
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "AI-generated or artisan description",
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Document creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Document update timestamp"
+        }
+      },
+      "required": ["id", "artisanId", "name", "price", "stock", "status", "craft"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Marketplace purchase order placed with the artisan",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique order identifier"
+        },
+        "artisanId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the receiving artisan"
+        },
+        "product": {
+          "type": "string",
+          "description": "Name of ordered product",
+          "maxLength": 150
+        },
+        "image": {
+          "type": "string",
+          "description": "Preview thumbnail or asset key",
+          "maxLength": 50000
+        },
+        "buyer": {
+          "type": "string",
+          "description": "Buyer name",
+          "maxLength": 100
+        },
+        "qty": {
+          "type": "number",
+          "description": "Quantity of items"
+        },
+        "price": {
+          "type": "number",
+          "description": "Total order amount in INR"
+        },
+        "date": {
+          "type": "string",
+          "description": "Formatted order date string",
+          "maxLength": 50
+        },
+        "status": {
+          "type": "string",
+          "description": "Fulfillment status",
+          "enum": ["New Order", "Processing", "Ready to Ship", "Shipped", "Delivered"]
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id", "artisanId", "product", "buyer", "qty", "price", "status"]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "Prospective buyer inquiry message for an artisan product",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique inquiry identifier"
+        },
+        "artisanId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the target artisan"
+        },
+        "buyer": {
+          "type": "string",
+          "description": "Name of prospective buyer",
+          "maxLength": 100
+        },
+        "product": {
+          "type": "string",
+          "description": "Product name referenced",
+          "maxLength": 150
+        },
+        "image": {
+          "type": "string",
+          "description": "Product thumbnail",
+          "maxLength": 50000
+        },
+        "message": {
+          "type": "string",
+          "description": "Buyer's question or message",
+          "maxLength": 1000
+        },
+        "time": {
+          "type": "string",
+          "description": "Relative or formatted inquiry time",
+          "maxLength": 50
+        },
+        "aiReply": {
+          "type": "string",
+          "description": "Suggested AI drafted reply in artisan's tone",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["id", "artisanId", "buyer", "product", "message"]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Ephemeral document to verify Firestore network connectivity",
+      "type": "object",
+      "properties": {
+        "testedAt": {
+          "type": "string",
+          "description": "Test execution timestamp"
+        }
+      },
+      "required": ["testedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles keyed by Firebase Auth UID"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Handcrafted products published or drafted by artisans"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Orders received by artisans"
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": "Inquiry",
+      "description": "Customer inquiries and smart replies"
+    },
+    "/test/{testId}": {
+      "schema": "ConnectionTest",
+      "description": "Connectivity test probe"
+    }
+  }
+}

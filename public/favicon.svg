@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ba3c1e"/>
+      <stop offset="45%" stop-color="#932b16"/>
+      <stop offset="100%" stop-color="#5a190c"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffde73"/>
+      <stop offset="50%" stop-color="#f5ba3b"/>
+      <stop offset="100%" stop-color="#d48a1a"/>
+    </linearGradient>
+    <linearGradient id="ivoryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#faebd7"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#2a0803" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+
+  <!-- Subtle Indian Mandala / Craft ring background -->
+  <circle cx="256" cy="256" r="195" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" stroke-dasharray="6 8" opacity="0.4"/>
+  <circle cx="256" cy="256" r="172" fill="none" stroke="#f5ba3b" stroke-width="1.5" opacity="0.25"/>
+
+  <!-- Central Emblem Container -->
+  <g filter="url(#shadow)">
+    <!-- Artisan Diya / Handcrafted Vessel Motif -->
+    <path d="M148 298 C148 372, 364 372, 364 298 C364 262, 334 246, 256 246 C178 246, 148 262, 148 298 Z" fill="url(#goldGrad)"/>
+    
+    <!-- Vessel base / pedestal -->
+    <path d="M214 366 L298 366 L310 392 C310 395, 306 398, 300 398 L212 398 C206 398, 202 395, 202 392 Z" fill="#d48a1a"/>
+
+    <!-- Artisan Pot Rim highlight -->
+    <ellipse cx="256" cy="272" rx="92" ry="18" fill="url(#ivoryGrad)" opacity="0.95"/>
+    <ellipse cx="256" cy="272" rx="72" ry="11" fill="#932b16"/>
+
+    <!-- Sacred Flame / Creative Artisan Spark / Shreni S Motif -->
+    <path d="M256 122 C268 162, 310 196, 310 232 C310 262, 286 284, 256 284 C226 284, 202 262, 202 232 C202 196, 244 162, 256 122 Z" fill="url(#goldGrad)"/>
+    
+    <!-- Inner Radiant Flame Core -->
+    <path d="M256 156 C263 182, 288 205, 288 230 C288 248, 274 262, 256 262 C238 262, 224 248, 224 230 C224 205, 249 182, 256 156 Z" fill="url(#ivoryGrad)"/>
+
+    <!-- Sparkle Stars for AI / Smart Assistant -->
+    <!-- Top-Right Sparkle -->
+    <path d="M356 142 Q356 162 376 162 Q356 162 356 182 Q356 162 336 162 Q356 162 356 142 Z" fill="url(#goldGrad)"/>
+    <!-- Top-Left Mini Sparkle -->
+    <path d="M162 172 Q162 184 174 184 Q162 184 162 196 Q162 184 150 184 Q162 184 162 172 Z" fill="#ffde73" opacity="0.85"/>
+  </g>
+
+  <!-- Stylized "S" curve for Shreni -->
+  <path d="M228 206 C238 196, 274 196, 274 214 C274 232, 238 234, 238 252 C238 262, 254 268, 270 260" fill="none" stroke="#ba3c1e" stroke-width="4.5" stroke-linecap="round" opacity="0.75"/>
+</svg>

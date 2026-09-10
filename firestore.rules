@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
+             (!('mobile' in data) || data.mobile == null || (data.mobile is string && data.mobile.size() <= 20)) &&
+             data.preferredLanguage is string && data.preferredLanguage.size() <= 10 &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 150)) &&
+             (!('artisanName' in data) || data.artisanName == null || (data.artisanName is string && data.artisanName.size() <= 100)) &&
+             (!('craftCategory' in data) || data.craftCategory == null || (data.craftCategory is string && data.craftCategory.size() <= 80)) &&
+             (!('experienceYears' in data) || data.experienceYears == null || data.experienceYears is number) &&
+             (!('village' in data) || data.village == null || (data.village is string && data.village.size() <= 100)) &&
+             (!('district' in data) || data.district == null || (data.district is string && data.district.size() <= 100)) &&
+             (!('state' in data) || data.state == null || (data.state is string && data.state.size() <= 100)) &&
+             (!('profileComplete' in data) || data.profileComplete is bool) &&
+             (!('verificationStatus' in data) || data.verificationStatus in ['pending', 'verified', 'failed', 'skipped']) &&
+             (!('verificationMethod' in data) || data.verificationMethod == null || (data.verificationMethod is string && data.verificationMethod.size() <= 50)) &&
+             (!('verifiedAt' in data) || data.verifiedAt == null || (data.verifiedAt is string && data.verifiedAt.size() <= 50)) &&
+             (!('providerReferenceId' in data) || data.providerReferenceId == null || (data.providerReferenceId is string && data.providerReferenceId.size() <= 100)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidProduct(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.artisanId is string && data.artisanId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+             data.price is number && data.price >= 0 &&
+             data.stock is number && data.stock >= 0 &&
+             data.status in ['Published', 'Draft', 'Out of Stock'] &&
+             data.craft is string && data.craft.size() <= 80 &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 50000)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('rating' in data) || data.rating is number);
+    }
+
+    function isValidOrder(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.artisanId is string && data.artisanId == request.auth.uid &&
+             data.product is string && data.product.size() > 0 && data.product.size() <= 150 &&
+             data.buyer is string && data.buyer.size() > 0 && data.buyer.size() <= 100 &&
+             data.qty is number && data.qty > 0 &&
+             data.price is number && data.price >= 0 &&
+             data.status in ['New Order', 'Processing', 'Ready to Ship', 'Shipped', 'Delivered'];
+    }
+
+    function isValidInquiry(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.artisanId is string && data.artisanId == request.auth.uid &&
+             data.buyer is string && data.buyer.size() > 0 && data.buyer.size() <= 100 &&
+             data.product is string && data.product.size() > 0 && data.product.size() <= 150 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 1000 &&
+             (!('aiReply' in data) || (data.aiReply is string && data.aiReply.size() <= 1000));
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().id == request.auth.uid;
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().id == existing().id &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'id', 'createdAt', 'fullName', 'mobile', 'email', 'preferredLanguage',
+                         'artisanName', 'craftCategory', 'experienceYears',
+                         'village', 'district', 'state', 'profileComplete',
+                         'verificationStatus', 'verificationMethod', 'verifiedAt',
+                         'providerReferenceId', 'updatedAt'
+                       ]);
+      allow delete: if false;
+    }
+
+    match /products/{productId} {
+      allow get: if isSignedIn() && existing().artisanId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.artisanId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(productId) &&
+                       isValidProduct(incoming()) &&
+                       incoming().artisanId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                       isValidId(productId) &&
+                       existing().artisanId == request.auth.uid &&
+                       incoming().artisanId == existing().artisanId &&
+                       isValidProduct(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'price', 'rating', 'stock', 'status',
+                         'image', 'craft', 'description', 'updatedAt'
+                       ]);
+      allow delete: if isSignedIn() &&
+                       isValidId(productId) &&
+                       existing().artisanId == request.auth.uid;
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && existing().artisanId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.artisanId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       isValidOrder(incoming()) &&
+                       incoming().artisanId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       existing().artisanId == request.auth.uid &&
+                       incoming().artisanId == existing().artisanId &&
+                       isValidOrder(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /inquiries/{inquiryId} {
+      allow get: if isSignedIn() && existing().artisanId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.artisanId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(inquiryId) &&
+                       isValidInquiry(incoming()) &&
+                       incoming().artisanId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                       isValidId(inquiryId) &&
+                       existing().artisanId == request.auth.uid &&
+                       incoming().artisanId == existing().artisanId &&
+                       isValidInquiry(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['aiReply', 'status', 'updatedAt']);
+      allow delete: if isSignedIn() &&
+                       isValidId(inquiryId) &&
+                       existing().artisanId == request.auth.uid;
+    }
+
+    match /test/{testId} {
+      allow get: if true;
+    }
+  }
+}

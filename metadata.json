@@ -1,0 +1,6 @@
+{
+  "name": "Shreni Kart",
+  "description": "AI-powered marketplace and smart cataloging assistant for Indian artisans.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
