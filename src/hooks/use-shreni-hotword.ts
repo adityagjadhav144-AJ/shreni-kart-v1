@@ -39,8 +39,15 @@ declare global {
   }
 }
 
+interface WakeLockSentinelLike extends EventTarget {
+  released: boolean;
+  release: () => Promise<void>;
+  onrelease?: ((this: WakeLockSentinelLike, ev: Event) => void) | null;
+}
+
 const STORAGE_KEY_ENABLED = "kalakart_shreni_voice_trigger_enabled";
 const STORAGE_KEY_SOUND_WAKE = "kalakart_shreni_sound_wake_enabled";
+const STORAGE_KEY_KEEP_AWAKE = "kalakart_shreni_keep_screen_awake";
 
 // Comprehensive trigger phrases including Hindi, regional accents, and phonetic speech-to-text variations
 export const TRIGGER_PATTERNS = [
@@ -136,8 +143,11 @@ export interface ShreniHotwordState {
   audioLevel: number;
   soundThresholdWake: boolean;
   needsGesture: boolean;
+  keepScreenAwake: boolean;
+  isWakeLockSupported: boolean;
   toggleEnabled: (enabled?: boolean) => Promise<void>;
   setSoundThresholdWake: (enabled: boolean) => void;
+  setKeepScreenAwake: (enabled: boolean) => void;
   startListening: () => Promise<void>;
   stopListening: () => void;
   pauseHotword: () => void;
@@ -150,6 +160,7 @@ export interface ShreniHotwordState {
 export function useShreniHotword(onTrigger: (initialQuery?: string) => void): ShreniHotwordState {
   const [isEnabled, setIsEnabled] = useState<boolean>(true);
   const [soundThresholdWake, setSoundThresholdWakeState] = useState<boolean>(false);
+  const [keepScreenAwake, setKeepScreenAwakeState] = useState<boolean>(true);
 
   // Sync initial state from localStorage after mount to prevent SSR hydration mismatch
   useEffect(() => {
@@ -161,6 +172,10 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       const storedWake = localStorage.getItem(STORAGE_KEY_SOUND_WAKE);
       if (storedWake !== null) {
         setSoundThresholdWakeState(storedWake === "true");
+      }
+      const storedKeepAwake = localStorage.getItem(STORAGE_KEY_KEEP_AWAKE);
+      if (storedKeepAwake !== null) {
+        setKeepScreenAwakeState(storedKeepAwake !== "false");
       }
     }
   }, []);
@@ -176,6 +191,11 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
 
   const isListeningRef = useRef(false);
   const isStartingRef = useRef(false);
+
+  const keepScreenAwakeRef = useRef(true);
+  const wakeLockSentinelRef = useRef<WakeLockSentinelLike | null>(null);
+  const isWakeLockAcquiringRef = useRef(false);
+  const isWakeLockSupported = typeof navigator !== "undefined" && "wakeLock" in navigator;
 
   useEffect(() => {
     isListeningRef.current = isListening;
@@ -214,6 +234,78 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
   const setSoundThresholdWake = useCallback((enabled: boolean) => {
     setSoundThresholdWakeState(enabled);
   }, []);
+
+  useEffect(() => {
+    keepScreenAwakeRef.current = keepScreenAwake;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEY_KEEP_AWAKE, String(keepScreenAwake));
+    }
+  }, [keepScreenAwake]);
+
+  const setKeepScreenAwake = useCallback((enabled: boolean) => {
+    setKeepScreenAwakeState(enabled);
+  }, []);
+
+  // Screen Wake Lock API management: Keeps phone from sleeping while voice trigger is active
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockSentinelRef.current) {
+      const sentinel = wakeLockSentinelRef.current;
+      wakeLockSentinelRef.current = null;
+      try {
+        if (!sentinel.released) {
+          await sentinel.release();
+          console.log("[Shreni Hotword] Screen Wake Lock cleanly released.");
+        }
+      } catch (err) {
+        console.debug("[Shreni Hotword] Wake Lock release notice:", err);
+      }
+    }
+  }, []);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
+      return;
+    }
+    // Only acquire if keepScreenAwake is enabled, hotword is enabled, and permission is granted
+    if (!keepScreenAwakeRef.current || !isEnabledRef.current || hasPermissionRef.current !== true) {
+      return;
+    }
+    // Avoid redundant requests if existing lock is active
+    if (wakeLockSentinelRef.current && !wakeLockSentinelRef.current.released) {
+      return;
+    }
+    if (isWakeLockAcquiringRef.current) return;
+
+    try {
+      isWakeLockAcquiringRef.current = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sentinel = await (navigator as any).wakeLock.request("screen");
+      wakeLockSentinelRef.current = sentinel;
+      console.log("[Shreni Hotword] Screen Wake Lock successfully acquired.");
+
+      sentinel.addEventListener("release", () => {
+        console.log("[Shreni Hotword] Screen Wake Lock was released.");
+        if (wakeLockSentinelRef.current === sentinel) {
+          wakeLockSentinelRef.current = null;
+        }
+      });
+    } catch (err) {
+      // Degrade gracefully: can fail if screen is off, battery saver active, or tab hidden
+      console.debug("[Shreni Hotword] Screen Wake Lock acquisition notice:", err);
+    } finally {
+      isWakeLockAcquiringRef.current = false;
+    }
+  }, []);
+
+  // Synchronize Wake Lock state whenever configuration or permission changes
+  useEffect(() => {
+    if (keepScreenAwake && isEnabled && hasPermission === true) {
+      void acquireWakeLock();
+    } else {
+      void releaseWakeLock();
+    }
+  }, [keepScreenAwake, isEnabled, hasPermission, acquireWakeLock, releaseWakeLock]);
 
   useEffect(() => {
     hasPermissionRef.current = hasPermission;
@@ -586,17 +678,40 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
     };
 
     const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === "visible" &&
-        isEnabledRef.current &&
-        !isPausedForAssistantRef.current &&
-        hasPermissionRef.current !== false &&
-        !recognitionRef.current &&
-        !isListeningRef.current &&
-        !isStartingRef.current
-      ) {
+      if (document.visibilityState === "visible") {
         void unlockAudioContext();
-        startRecognitionSession();
+
+        // Lifecycle Management: Automatically re-acquire Wake Lock when foregrounded
+        if (
+          keepScreenAwakeRef.current &&
+          isEnabledRef.current &&
+          hasPermissionRef.current === true
+        ) {
+          void acquireWakeLock();
+        }
+
+        // Gracefully restart speech recognition session loop
+        if (
+          isEnabledRef.current &&
+          !isPausedForAssistantRef.current &&
+          hasPermissionRef.current !== false
+        ) {
+          if (!isListeningRef.current && !isStartingRef.current) {
+            if (recognitionRef.current) {
+              try {
+                recognitionRef.current.onstart = null;
+                recognitionRef.current.onend = null;
+                recognitionRef.current.onerror = null;
+                recognitionRef.current.onresult = null;
+                recognitionRef.current.abort();
+              } catch {
+                // ignore
+              }
+              recognitionRef.current = null;
+            }
+            startRecognitionSession();
+          }
+        }
       }
     };
 
@@ -606,6 +721,7 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      void releaseWakeLock();
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
       if (audioDecayTimerRef.current) clearTimeout(audioDecayTimerRef.current);
       window.removeEventListener("pointerdown", handleUserInteraction);
@@ -631,7 +747,7 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       isStartingRef.current = false;
       isListeningRef.current = false;
     };
-  }, [startRecognitionSession]);
+  }, [acquireWakeLock, releaseWakeLock, startRecognitionSession]);
 
   // Pause background hotword while assistant overlay dialog is open
   const pauseHotword = useCallback(() => {
@@ -704,7 +820,8 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
   const stopListening = useCallback(() => {
     pauseHotword();
     setIsEnabled(false);
-  }, [pauseHotword]);
+    void releaseWakeLock();
+  }, [pauseHotword, releaseWakeLock]);
 
   const toggleEnabled = useCallback(
     async (forceVal?: boolean) => {
@@ -730,7 +847,10 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
     audioLevel,
     soundThresholdWake,
     needsGesture,
+    keepScreenAwake,
+    isWakeLockSupported,
     setSoundThresholdWake,
+    setKeepScreenAwake,
     toggleEnabled,
     startListening,
     stopListening,

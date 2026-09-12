@@ -1025,6 +1025,44 @@ export function ShreniAssistantOverlay() {
                   </button>
                 </div>
 
+                {/* Keep Screen Awake Toggle */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-foreground">Keep Screen Awake</p>
+                      {hotword.isWakeLockSupported && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+                          Wake Lock
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Prevents the phone from sleeping so Shreni can always hear you while you work.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !hotword.keepScreenAwake;
+                      hotword.setKeepScreenAwake(next);
+                      if (next) {
+                        toast.success("Keep Screen Awake enabled");
+                      } else {
+                        toast.info("Keep Screen Awake disabled");
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      hotword.keepScreenAwake ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block size-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        hotword.keepScreenAwake ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 {/* Sound chime test */}
                 <div className="flex items-center justify-between pt-2 border-t border-border/40">
                   <div>
