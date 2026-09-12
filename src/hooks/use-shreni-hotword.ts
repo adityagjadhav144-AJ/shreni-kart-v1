@@ -277,11 +277,20 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       return;
     }
 
+    // Prevent duplicate recognition instances from spawning concurrently
+    if (isListeningRef.current || isStartingRef.current) {
+      console.log(
+        "[Shreni Hotword] Speech recognition already listening or starting; ignoring duplicate start.",
+      );
+      return;
+    }
+
     // Stop any existing instance cleanly before initiating a fresh session
     if (recognitionRef.current) {
       const prevRec = recognitionRef.current;
       recognitionRef.current = null;
       try {
+        prevRec.onstart = null;
         prevRec.onend = null;
         prevRec.onerror = null;
         prevRec.onresult = null;
@@ -293,6 +302,8 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
 
     try {
       const rec = new SpeechRecognitionClass();
+      recognitionRef.current = rec;
+      isStartingRef.current = true;
       rec.continuous = true;
       rec.interimResults = true;
       rec.lang = "en-IN"; // Mixed Indian English & Hindi support
@@ -301,6 +312,9 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       }
 
       rec.onstart = () => {
+        if (recognitionRef.current !== rec) return;
+        isStartingRef.current = false;
+        isListeningRef.current = true;
         setIsListening(true);
         setHasPermission(true);
         hasPermissionRef.current = true;
@@ -311,7 +325,7 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       };
 
       rec.onresult = (event: SpeechRecognitionEvent) => {
-        if (isPausedForAssistantRef.current) return;
+        if (recognitionRef.current !== rec || isPausedForAssistantRef.current) return;
 
         // Visual feedback: user is speaking
         pulseAudioMeter(65);
@@ -339,6 +353,8 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       };
 
       rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (recognitionRef.current !== rec) return;
+        isStartingRef.current = false;
         consecutiveErrorsRef.current += 1;
 
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -346,6 +362,7 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
           if (hasPermissionRef.current !== true) {
             setNeedsGesture(true);
             needsGestureRef.current = true;
+            isListeningRef.current = false;
             setIsListening(false);
             consecutiveErrorsRef.current = 5;
           } else {
@@ -361,10 +378,11 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       };
 
       rec.onend = () => {
+        if (recognitionRef.current !== rec) return;
+        isStartingRef.current = false;
+        isListeningRef.current = false;
         setIsListening(false);
-        if (recognitionRef.current === rec) {
-          recognitionRef.current = null;
-        }
+        recognitionRef.current = null;
 
         // Resilient automatic restart
         // If hotword is enabled and not paused for active assistant, keep the loop alive
@@ -382,7 +400,9 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
             if (
               isEnabledRef.current &&
               !isPausedForAssistantRef.current &&
-              hasPermissionRef.current !== false
+              hasPermissionRef.current !== false &&
+              !isListeningRef.current &&
+              !isStartingRef.current
             ) {
               startRecognitionSession();
             }
@@ -390,21 +410,24 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
         }
       };
 
-      recognitionRef.current = rec;
       rec.start();
     } catch (e) {
       console.debug("Speech recognition start notice:", e);
+      isStartingRef.current = false;
+      isListeningRef.current = false;
+      setIsListening(false);
       if (recognitionRef.current) {
         try {
+          recognitionRef.current.onstart = null;
           recognitionRef.current.onend = null;
           recognitionRef.current.onerror = null;
+          recognitionRef.current.onresult = null;
           recognitionRef.current.abort();
         } catch {
           // ignore
         }
         recognitionRef.current = null;
       }
-      setIsListening(false);
       if (
         isEnabledRef.current &&
         !isPausedForAssistantRef.current &&
@@ -415,7 +438,9 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
           if (
             isEnabledRef.current &&
             !isPausedForAssistantRef.current &&
-            hasPermissionRef.current !== false
+            hasPermissionRef.current !== false &&
+            !isListeningRef.current &&
+            !isStartingRef.current
           ) {
             startRecognitionSession();
           }
@@ -552,7 +577,9 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
         isEnabledRef.current &&
         !isPausedForAssistantRef.current &&
         hasPermissionRef.current !== false &&
-        !recognitionRef.current
+        !recognitionRef.current &&
+        !isListeningRef.current &&
+        !isStartingRef.current
       ) {
         startRecognitionSession();
       }
@@ -564,7 +591,9 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
         isEnabledRef.current &&
         !isPausedForAssistantRef.current &&
         hasPermissionRef.current !== false &&
-        !recognitionRef.current
+        !recognitionRef.current &&
+        !isListeningRef.current &&
+        !isStartingRef.current
       ) {
         void unlockAudioContext();
         startRecognitionSession();
@@ -589,13 +618,18 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       }
       if (recognitionRef.current) {
         try {
+          recognitionRef.current.onstart = null;
           recognitionRef.current.onend = null;
+          recognitionRef.current.onerror = null;
+          recognitionRef.current.onresult = null;
           recognitionRef.current.abort();
         } catch {
           // ignore
         }
         recognitionRef.current = null;
       }
+      isStartingRef.current = false;
+      isListeningRef.current = false;
     };
   }, [startRecognitionSession]);
 
@@ -603,6 +637,8 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
   const pauseHotword = useCallback(() => {
     console.log("[Shreni Hotword] Pausing background hotword recognition.");
     isPausedForAssistantRef.current = true;
+    isStartingRef.current = false;
+    isListeningRef.current = false;
     if (restartTimeoutRef.current) {
       clearTimeout(restartTimeoutRef.current);
       restartTimeoutRef.current = null;
@@ -611,6 +647,7 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
       const rec = recognitionRef.current;
       recognitionRef.current = null;
       try {
+        rec.onstart = null;
         rec.onend = null;
         rec.onerror = null;
         rec.onresult = null;
@@ -625,8 +662,10 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
   // Robustly re-arm background hotword listener loop after overlay closes
   const rearmHotword = useCallback(async () => {
     console.log("[Shreni Hotword] Re-arming background hotword recognition loop.");
-    await unlockAudioContext();
+    void unlockAudioContext();
     isPausedForAssistantRef.current = false;
+    isStartingRef.current = false;
+    isListeningRef.current = false;
     needsGestureRef.current = false;
     setNeedsGesture(false);
     consecutiveErrorsRef.current = 0;
@@ -645,7 +684,12 @@ export function useShreniHotword(onTrigger: (initialQuery?: string) => void): Sh
     } else {
       // 250ms buffer ensures microphone hardware audio-capture tracks are completely released
       setTimeout(() => {
-        if (!isPausedForAssistantRef.current && isEnabledRef.current) {
+        if (
+          !isPausedForAssistantRef.current &&
+          isEnabledRef.current &&
+          !isListeningRef.current &&
+          !isStartingRef.current
+        ) {
           startRecognitionSession();
         }
       }, 250);

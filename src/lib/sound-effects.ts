@@ -101,7 +101,9 @@ export async function unlockAudioContext(): Promise<boolean> {
   if (!ctx) return false;
   try {
     if (ctx.state === "suspended") {
-      await ctx.resume();
+      const resumePromise = ctx.resume();
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 200));
+      await Promise.race([resumePromise, timeoutPromise]);
     }
     isAudioUnlocked = ctx.state === "running";
     return isAudioUnlocked;
@@ -116,10 +118,10 @@ if (typeof window !== "undefined") {
   const unlock = () => {
     void unlockAudioContext();
   };
-  window.addEventListener("click", unlock, { passive: true });
-  window.addEventListener("touchstart", unlock, { passive: true });
-  window.addEventListener("pointerdown", unlock, { passive: true });
-  window.addEventListener("keydown", unlock, { passive: true });
+  window.addEventListener("click", unlock, { passive: true, capture: true });
+  window.addEventListener("touchstart", unlock, { passive: true, capture: true });
+  window.addEventListener("pointerdown", unlock, { passive: true, capture: true });
+  window.addEventListener("keydown", unlock, { passive: true, capture: true });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       void unlockAudioContext();

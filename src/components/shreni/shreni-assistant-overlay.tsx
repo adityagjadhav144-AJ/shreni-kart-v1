@@ -95,9 +95,11 @@ export function ShreniAssistantOverlay() {
   const pauseCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveTranscriptionRef = useRef("");
   const isListeningInputRef = useRef(false);
+  const isStartingActiveRef = useRef(false);
   const isFinalizingRef = useRef(false);
   const isOpenRef = useRef(isOpen);
   const startActiveListeningRef = useRef<() => void>(() => {});
+  const stopActiveListeningRef = useRef<() => void>(() => {});
   const closeAssistantRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -117,23 +119,31 @@ export function ShreniAssistantOverlay() {
     setPauseSecondsLeft(null);
   }, []);
 
-  // Stop active listening cleanly
+  // Stop active listening cleanly and clear all listeners
   const stopActiveListening = useCallback(() => {
+    isStartingActiveRef.current = false;
     clearPauseTimers();
-    isListeningInputRef.current = false;
     if (activeRecognitionRef.current) {
+      const rec = activeRecognitionRef.current;
+      activeRecognitionRef.current = null;
       try {
-        activeRecognitionRef.current.onend = null;
-        activeRecognitionRef.current.onerror = null;
-        activeRecognitionRef.current.abort();
+        rec.onstart = null;
+        rec.onend = null;
+        rec.onerror = null;
+        rec.onresult = null;
+        rec.abort();
       } catch {
         // ignore
       }
-      activeRecognitionRef.current = null;
     }
+    isListeningInputRef.current = false;
     setIsListeningInput(false);
     setPauseSecondsLeft(null);
   }, [clearPauseTimers]);
+
+  useEffect(() => {
+    stopActiveListeningRef.current = stopActiveListening;
+  }, [stopActiveListening]);
 
   // Send user query to Shreni AI backend
   const handleUserQuery = useCallback(
@@ -243,27 +253,31 @@ export function ShreniAssistantOverlay() {
         for (const act of allActions) {
           if (act && act.type !== "none" && act.autoExecute !== false) {
             console.log("[Shreni PWA Voice] Auto-executing action:", act);
-            void executeShreniAction(act, {
-              artisanId,
-              artisanName,
-              navigate: ({ href, to }) => {
-                const target = href || to;
-                if (target) {
-                  console.log("[Shreni PWA Voice] Navigating to:", target);
-                  if (href) {
-                    void navigate({ href });
-                  } else if (to) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    void navigate({ to: to as any });
+            try {
+              await executeShreniAction(act, {
+                artisanId,
+                artisanName,
+                navigate: ({ href, to }) => {
+                  const target = href || to;
+                  if (target) {
+                    console.log("[Shreni PWA Voice] Navigating to:", target);
+                    if (href) {
+                      void navigate({ href });
+                    } else if (to) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      void navigate({ to: to as any });
+                    }
                   }
-                }
-              },
-              closeAssistant: () => closeAssistantRef.current(),
-              setTtsEnabled: (val) => setTtsEnabled(val),
-              testChime: async () => {
-                await playAssistantActivationChime();
-              },
-            });
+                },
+                closeAssistant: () => closeAssistantRef.current(),
+                setTtsEnabled: (val) => setTtsEnabled(val),
+                testChime: async () => {
+                  await playAssistantActivationChime();
+                },
+              });
+            } catch (actErr) {
+              console.warn("[Shreni PWA Voice] Action execution error:", actErr);
+            }
           }
         }
       }
@@ -273,29 +287,31 @@ export function ShreniAssistantOverlay() {
         setIsSpeakingOutLoud(true);
         speakWithShreniVoice(res.reply, () => {
           setIsSpeakingOutLoud(false);
-          // Auto-Mic Activation: immediately after AI finishes speaking, open the mic for natural reply
+          // Auto-Mic Activation: immediately after AI finishes speaking, re-bind mic for natural reply
           if (isOpenRef.current) {
             setTimeout(() => {
-              if (isOpenRef.current && !isListeningInputRef.current) {
+              if (isOpenRef.current) {
                 console.log(
-                  "[Shreni PWA Voice] TTS completed: Auto-activating mic for natural reply.",
+                  "[Shreni PWA Voice] Speech synthesis turn completed: Re-binding active speech recognition.",
                 );
-                void startActiveListeningRef.current();
+                stopActiveListeningRef.current?.();
+                void startActiveListeningRef.current?.();
               }
             }, 200);
           }
         });
       } else {
-        // Auto-Mic Activation when TTS is disabled: activate mic shortly after message is displayed
+        // Auto-Mic Activation when TTS is disabled: re-bind mic shortly after message is displayed
         if (isOpenRef.current) {
           setTimeout(() => {
-            if (isOpenRef.current && !isListeningInputRef.current) {
+            if (isOpenRef.current) {
               console.log(
-                "[Shreni PWA Voice] Message displayed: Auto-activating mic for natural reply.",
+                "[Shreni PWA Voice] Intent execution turn completed: Re-binding active speech recognition.",
               );
-              void startActiveListeningRef.current();
+              stopActiveListeningRef.current?.();
+              void startActiveListeningRef.current?.();
             }
-          }, 300);
+          }, 250);
         }
       }
 
@@ -336,9 +352,19 @@ export function ShreniAssistantOverlay() {
       return;
     }
 
+    // Prevent duplicate recognition instances from spawning concurrently
+    if (isListeningInputRef.current || isStartingActiveRef.current) {
+      console.log(
+        "[Shreni PWA Voice] Active speech recognition already listening or starting; ignoring duplicate start.",
+      );
+      return;
+    }
+
+    isStartingActiveRef.current = true;
+
     try {
-      // 1. Explicitly resume AudioContext for PWA standalone webview
-      await unlockAudioContext();
+      // 1. Resume AudioContext without blocking for PWA standalone webview
+      void unlockAudioContext();
       stopSpeaking();
       setIsSpeakingOutLoud(false);
       clearPauseTimers();
@@ -346,15 +372,17 @@ export function ShreniAssistantOverlay() {
 
       // 2. Safely tear down any prior active recognition instance
       if (activeRecognitionRef.current) {
+        const prevRec = activeRecognitionRef.current;
+        activeRecognitionRef.current = null;
         try {
-          activeRecognitionRef.current.onend = null;
-          activeRecognitionRef.current.onerror = null;
-          activeRecognitionRef.current.onresult = null;
-          activeRecognitionRef.current.abort();
+          prevRec.onstart = null;
+          prevRec.onend = null;
+          prevRec.onerror = null;
+          prevRec.onresult = null;
+          prevRec.abort();
         } catch {
           // ignore
         }
-        activeRecognitionRef.current = null;
       }
 
       const rec = new SpeechRecognitionClass();
@@ -364,6 +392,8 @@ export function ShreniAssistantOverlay() {
       rec.lang = "en-IN";
 
       rec.onstart = () => {
+        if (activeRecognitionRef.current !== rec) return;
+        isStartingActiveRef.current = false;
         console.log("[Shreni PWA Voice] Active speech recognition started.");
         setIsListeningInput(true);
         isListeningInputRef.current = true;
@@ -374,6 +404,7 @@ export function ShreniAssistantOverlay() {
       };
 
       rec.onresult = (e: SpeechRecognitionEvent) => {
+        if (activeRecognitionRef.current !== rec) return;
         if (!isListeningInputRef.current || isFinalizingRef.current) return;
 
         // User spoke or resumed speaking: clear pending commit timers
@@ -433,6 +464,8 @@ export function ShreniAssistantOverlay() {
       };
 
       rec.onerror = (e: SpeechRecognitionErrorEvent) => {
+        if (activeRecognitionRef.current !== rec) return;
+        isStartingActiveRef.current = false;
         console.warn("[Shreni PWA Voice] Active speech error:", e.error);
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
           toast.error("Microphone permission required. Tap the microphone to grant.", {
@@ -446,6 +479,7 @@ export function ShreniAssistantOverlay() {
           );
           setTimeout(() => {
             if (isOpen && isListeningInputRef.current && !isFinalizingRef.current) {
+              stopActiveListeningRef.current?.();
               void startActiveListening();
             }
           }, 350);
@@ -459,6 +493,9 @@ export function ShreniAssistantOverlay() {
       };
 
       rec.onend = () => {
+        if (activeRecognitionRef.current !== rec) return;
+        isStartingActiveRef.current = false;
+        activeRecognitionRef.current = null;
         console.log(
           "[Shreni PWA Voice] Active speech onend. Pending text:",
           liveTranscriptionRef.current,
@@ -481,6 +518,7 @@ export function ShreniAssistantOverlay() {
       rec.start();
     } catch (err) {
       console.warn("[Shreni PWA Voice] Failed to start active speech recognition:", err);
+      isStartingActiveRef.current = false;
       setIsListeningInput(false);
       isListeningInputRef.current = false;
     }
@@ -494,20 +532,61 @@ export function ShreniAssistantOverlay() {
   const handleHotwordTriggered = useCallback(
     async (initialQuery?: string) => {
       console.log("[Shreni PWA Voice] handleHotwordTriggered with initialQuery:", initialQuery);
-      await unlockAudioContext();
-      await playAssistantActivationChime();
+      void unlockAudioContext();
+      void playAssistantActivationChime();
       setIsOpen(true);
       if (initialQuery && initialQuery.trim().length > 1) {
         void handleUserQuery(initialQuery.trim());
       } else {
         // Allow 150ms buffer for microphone hardware to release before starting active listener
         setTimeout(() => {
-          void startActiveListening();
+          stopActiveListeningRef.current?.();
+          void startActiveListeningRef.current?.();
         }, 150);
       }
     },
-    [handleUserQuery, startActiveListening],
+    [handleUserQuery],
   );
+
+  // Standalone PWA / Webview Fallback:
+  // Add immediate fallback click/pointer listeners to resume AudioContext and start recognition without blocking
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePwaInteraction = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      // Immediately unblock AudioContext
+      void unlockAudioContext();
+
+      // If clicking interactive controls inside overlay (buttons, inputs, close btn), let them handle it
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("button, input, textarea, a")) {
+        return;
+      }
+
+      // If user tapped outside buttons when overlay is open, and Shreni is neither speaking nor listening, activate mic
+      if (
+        isOpenRef.current &&
+        !isSpeakingOutLoud &&
+        !isQueryLoading &&
+        !isListeningInputRef.current &&
+        !isStartingActiveRef.current &&
+        !isFinalizingRef.current
+      ) {
+        console.log(
+          "[Shreni PWA Voice] Standalone PWA tap detected: Activating active speech recognition.",
+        );
+        void startActiveListeningRef.current?.();
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePwaInteraction, { passive: true, capture: true });
+    window.addEventListener("touchstart", handlePwaInteraction, { passive: true, capture: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePwaInteraction, { capture: true });
+      window.removeEventListener("touchstart", handlePwaInteraction, { capture: true });
+    };
+  }, [isOpen, isSpeakingOutLoud, isQueryLoading]);
 
   const hotword = useShreniHotword(handleHotwordTriggered);
   const hotwordRef = useRef(hotword);
