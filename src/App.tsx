@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth";
 import { addProduct } from "@/lib/firestore-service";
 import { saveProductToCloudSql } from "@/lib/cloudsql-service.functions";
 import { images, inr } from "@/lib/kalakart-data";
+import { usePWAUpdate } from "@/hooks/use-pwa-update";
 import { toast } from "sonner";
 import {
   Camera,
@@ -395,6 +396,7 @@ declare module "@tanstack/react-router" {
 }
 
 export function App() {
+  usePWAUpdate();
   return <RouterProvider router={router} />;
 }
 

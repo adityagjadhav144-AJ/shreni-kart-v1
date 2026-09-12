@@ -127,11 +127,7 @@ body {
 }
 
 .bg-gradient-hero {
-  background: linear-gradient(
-    180deg,
-    rgba(30, 10, 5, 0.4) 0%,
-    rgba(30, 10, 5, 0.88) 100%
-  );
+  background: linear-gradient(180deg, rgba(30, 10, 5, 0.4) 0%, rgba(30, 10, 5, 0.88) 100%);
 }
 
 .bg-gradient-surface {
@@ -155,13 +151,7 @@ body {
 }
 
 .assistant-lightbar {
-  background: linear-gradient(
-    90deg,
-    #4285f4 0%,
-    #ea4335 33%,
-    #fbbc05 66%,
-    #34a853 100%
-  );
+  background: linear-gradient(90deg, #4285f4 0%, #ea4335 33%, #fbbc05 66%, #34a853 100%);
   border-radius: 9999px;
   animation: pulse-glow 2s infinite ease-in-out;
 }
