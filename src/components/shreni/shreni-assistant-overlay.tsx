@@ -71,6 +71,8 @@ export function ShreniAssistantOverlay() {
   const [isQueryLoading, setIsQueryLoading] = useState(false);
   const [isListeningInput, setIsListeningInput] = useState(false);
   const [liveTranscription, setLiveTranscription] = useState("");
+  const [finalTranscript, setFinalTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [pauseSecondsLeft, setPauseSecondsLeft] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isPermissionBannerDismissed, setIsPermissionBannerDismissed] = useState(false);
@@ -94,6 +96,7 @@ export function ShreniAssistantOverlay() {
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pauseCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveTranscriptionRef = useRef("");
+  const finalTranscriptRef = useRef("");
   const isListeningInputRef = useRef(false);
   const isStartingActiveRef = useRef(false);
   const isFinalizingRef = useRef(false);
@@ -138,6 +141,11 @@ export function ShreniAssistantOverlay() {
     }
     isListeningInputRef.current = false;
     setIsListeningInput(false);
+    setLiveTranscription("");
+    liveTranscriptionRef.current = "";
+    setFinalTranscript("");
+    finalTranscriptRef.current = "";
+    setInterimTranscript("");
     setPauseSecondsLeft(null);
   }, [clearPauseTimers]);
 
@@ -166,6 +174,9 @@ export function ShreniAssistantOverlay() {
       setInputText("");
       setLiveTranscription("");
       liveTranscriptionRef.current = "";
+      setFinalTranscript("");
+      finalTranscriptRef.current = "";
+      setInterimTranscript("");
       setIsQueryLoading(true);
 
       // 1. Resolve localized deterministic intent immediately
@@ -331,6 +342,9 @@ export function ShreniAssistantOverlay() {
 
     setLiveTranscription("");
     liveTranscriptionRef.current = "";
+    setFinalTranscript("");
+    finalTranscriptRef.current = "";
+    setInterimTranscript("");
     setPauseSecondsLeft(null);
 
     if (queryToSend.length > 0) {
@@ -399,6 +413,9 @@ export function ShreniAssistantOverlay() {
         isListeningInputRef.current = true;
         setLiveTranscription("");
         liveTranscriptionRef.current = "";
+        setFinalTranscript("");
+        finalTranscriptRef.current = "";
+        setInterimTranscript("");
         setPauseSecondsLeft(null);
         void playMicBeep("start");
       };
@@ -410,23 +427,62 @@ export function ShreniAssistantOverlay() {
         // User spoke or resumed speaking: clear pending commit timers
         clearPauseTimers();
 
-        let accumulated = "";
+        let newFinalText = "";
+        let currentInterim = "";
         let hasFinalResult = false;
-        for (let i = 0; i < e.results.length; i++) {
+
+        // Pitfall 2: Loop from e.resultIndex instead of 0 to avoid re-processing old results
+        for (let i = e.resultIndex; i < e.results.length; i++) {
           const resItem = e.results[i];
-          if (resItem && resItem[0]) {
-            accumulated += resItem[0].transcript + " ";
-            if (resItem.isFinal) {
-              hasFinalResult = true;
-            }
+          if (!resItem || !resItem[0]) continue;
+
+          const piece = resItem[0].transcript;
+
+          // Pitfall 1: Properly separate interim guesses from final transcripts
+          if (resItem.isFinal) {
+            newFinalText += piece + " ";
+            hasFinalResult = true;
+          } else {
+            currentInterim += piece + " ";
           }
         }
-        const fullSpoken = accumulated.trim();
-        setLiveTranscription(fullSpoken);
-        liveTranscriptionRef.current = fullSpoken;
+
+        const trimmedNewFinal = newFinalText.trim();
+        const trimmedInterim = currentInterim.trim();
+
+        // Pitfall 3: React State Closures - use functional state updates
+        if (trimmedNewFinal) {
+          setFinalTranscript((prevFinal) => {
+            const updatedFinal = (
+              prevFinal ? `${prevFinal} ${trimmedNewFinal}` : trimmedNewFinal
+            ).trim();
+            finalTranscriptRef.current = updatedFinal;
+
+            const fullCombined = (
+              trimmedInterim ? `${updatedFinal} ${trimmedInterim}` : updatedFinal
+            ).trim();
+            setLiveTranscription(fullCombined);
+            liveTranscriptionRef.current = fullCombined;
+            return updatedFinal;
+          });
+        } else {
+          // Interim hypothesis update against accumulated final text
+          const currentFinal = finalTranscriptRef.current;
+          const fullCombined = (
+            currentFinal ? `${currentFinal} ${trimmedInterim}` : trimmedInterim
+          ).trim();
+          setLiveTranscription(fullCombined);
+          liveTranscriptionRef.current = fullCombined;
+        }
+
+        setInterimTranscript(trimmedInterim);
+
+        const fullSpoken = liveTranscriptionRef.current;
 
         console.log("[Shreni PWA Voice] onresult:", {
-          text: fullSpoken,
+          newFinal: trimmedNewFinal,
+          interim: trimmedInterim,
+          fullSpoken,
           isFinal: hasFinalResult,
         });
 
@@ -1430,7 +1486,17 @@ export function ShreniAssistantOverlay() {
                 <div className="bg-background/90 border border-border/60 rounded-xl px-3 py-2 shadow-xs">
                   <p className="text-xs sm:text-sm font-medium text-foreground leading-relaxed">
                     {liveTranscription ? (
-                      `“${liveTranscription}”`
+                      <span>
+                        “
+                        {finalTranscript && (
+                          <span className="text-foreground">{finalTranscript}</span>
+                        )}
+                        {finalTranscript && interimTranscript && " "}
+                        {interimTranscript && (
+                          <span className="text-muted-foreground italic">{interimTranscript}</span>
+                        )}
+                        ”
+                      </span>
                     ) : (
                       <span className="text-muted-foreground italic">
                         Speak freely… take your time, 1–2s pauses won't cut you off. A 3s pause
